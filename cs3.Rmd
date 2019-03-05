@@ -1,0 +1,408 @@
+---
+title: 'Case Study 3: Patterns in DNA'
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+# CMD + SHIFT + K
+# CMD + OPTION + I
+# CMD + SHIFT + ENTER
+```
+
+```{r}
+library(lattice)
+library(purrr)
+```
+
+## 1 Locations
+### 1.1 Hello
+```{r}
+DNA.len <- 229354
+
+# Import the data
+data <- read.table("data.txt", header=TRUE)
+
+locs = data$location
+locs.len = length(obs_locs)
+locs.min = min(obs_locs)
+locs.max = max(obs_locs)
+
+# Build the generated palindorme locations
+r_locs <- round(runif(locs.len, 0, DNA.len))
+```
+
+```{r}
+# Plotting the observed locations
+stripplot(locs, main='Location of Observed Palindromes', xlab='Locations', pch=16, cex=0.25) #one-dimensional scatter plot
+stripplot(r_locs, main='Location of Generated Palindromes', xlab='Locations', pch=16, cex=0.25, col='red') #one-dimensional scatter plot
+hist(locs, breaks = 30, xaxt='n', col=rgb(0,0,1,0.7), xaxt='n')
+hist(r_locs, breaks = 30, col=rgb(1,0,0,0.7), xaxt='n', add=T)
+axis(1, at=seq(0, DNA.len + 10000, 10000))
+```
+
+```{r}
+# Split the data into intervals
+indx = 1
+intervals.size <- 2050
+intervals <- split(locs, cut(locs, seq(locs.min, locs.max, by=intervals.size), 
+                             include.lowest=TRUE, drop=FALSE))
+intervals.num <- length(intervals)
+
+# Count the total number of palindromes in our intervals
+intervals.tot_pals = 0
+for (intv in intervals) {
+  intervals.tot_pals = intervals.tot_pals + length(intv)
+}
+
+lambda.est = intervals.tot_pals/intervals.num
+
+# Print metrics
+paste("Interval Size:", intervals.size)
+paste("Number of intervals:", intervals.num)
+paste("Total Palindromes (within intervals):", intervals.tot_pals)
+paste("Lambda Est:", lambda.est)
+```
+
+```{r}
+k_plus = 6
+
+# Calculated the expected palindrome counts for {0, 1, ... 8, 9+}
+pal.counts_est <- numeric(k_plus)
+
+for (i in 0:k_plus) {
+  if (i != k_plus) {
+    pal.counts_est[i + 1] = (ppois(i, lambda.est, lower=T) - 
+      ppois(i - 1, lambda.est, lower=T)) * intervals.num
+  } else {
+    pal.counts_est[i + 1] = ppois(k_plus - 1, lambda.est, lower=F) * intervals.num
+  }
+}
+
+paste("Pal Count Estimates:", toString(pal.counts_est))
+```
+
+```{r}
+# Get raw counts for each k palindromes
+pal.counts <- integer(intervals.num)
+i = 1
+for (p in intervals) {
+  pal.counts[i] = length(p)
+  i = i + 1
+}
+
+title = paste('Observed Palindrome Counts Across', intervals.len, 'Intervals of Length', intervals.size)
+barplot(pal.counts, col=rgb(0,0,1, 0.6), main=title, xlab=xlab)
+```
+
+```{r}
+# Get raw counts for each k palindromes
+r_locs <- round(runif(locs.len, 0, DNA.len))
+r_intervals <- split(r_locs, cut(r_locs, seq(min(r_locs), max(r_locs), by=intervals.size), 
+                             include.lowest=TRUE, drop=FALSE))
+
+r_pal.counts <- integer(intervals.num)
+i = 1
+for (p in r_intervals) {
+  r_pal.counts[i] = length(p)
+  i = i + 1
+}
+
+title = paste('Generated Palindrome Counts Across', intervals.len, 'Intervals of Length', intervals.size)
+barplot(r_pal.counts, col=rgb(1,0,0, 0.6), main=title, xlab=xlab)
+```
+
+
+```{r}
+pal.counter <- integer(k_plus + 1)
+
+# Build observed palindrome counts for contigency table
+for (count in pal.counts) {
+  if ( count >= k_plus ) {
+    pal.counter[k_plus + 1] = pal.counter[k_plus + 1] + 1
+  } else {
+    pal.counter[count + 1] = pal.counter[count + 1] + 1
+  }
+}
+
+print("Observed Palindrome Counts")
+print(pal.counter)
+```
+
+```{r}
+print("Contigency Table")
+for (i in seq_along(pal.counter) ) {
+  plus = " "
+  if(i == k_plus + 1) {
+    plus = "+"
+  }
+  str <- paste(toString(i - 1), plus, ": ", toString(pal.counter[i]), 
+               "    ,", toString(pal.counts_est[i]))
+  print(str)
+}
+```
+
+```{r}
+# Manually combine rows
+n <- k_plus - 1 # Number of rows we'll be sizing down to
+contigency_obs = numeric(n)
+contigency_exp = numeric(n)
+num_comb <- 1
+for (i in 1:length(pal.counter)) {
+  if (i <= num_comb) {
+    contigency_obs[1] <- contigency_obs[1] + pal.counter[i]
+    contigency_exp[1] <- contigency_exp[1] + pal.counts_est[i]
+  } else {
+    contigency_obs[i - num_comb + 1] <- pal.counter[i]
+    contigency_exp[i - num_comb + 1] <- pal.counts_est[i]
+  }
+}
+
+# Truncated Contigency Table 
+pal_cont_table <- data.frame("Obs Pal Counts"=contigency_obs, "Exp Pal Counts"=contigency_exp)
+pal_cont_table
+```
+
+
+## 1.3 Chi Squarted Function
+```{r}
+# Compute the chi-squared
+#
+# Args:
+#     obs: List of observed values
+#     exp: List of expected values
+chi_sqrd <- function(obs, exp, k) {
+  n <- length(obs)
+  x <- 0
+  for(i in 1:length(obs)) {
+    x <- x + ((obs[i] - exp[i])^2)/(exp[i])
+  }
+  #x <- sum( ((obs - exp)^2)/exp)
+  
+  print(n - k)
+  return (c(x, pchisq(x, n - k, lower=F)))
+}
+```
+
+```{r}
+sample_obs <- c(7, 8, 10, 9, 8, 5, 4, 6)
+sample_exp <- c(6.4, 7.5, 9.7, 10, 8.6, 6.3, 4.1, 4.5)
+print(chi_sqrd(contigency_obs, contigency_exp, 2))
+```
+
+### 1.6 Residuals of Palindrome Counts
+```{r}
+Residuals <- (contigency_obs - contigency_exp) / sqrt(contigency_exp)
+plot(Residuals, type = 'h', ylab = "standardized residuals", xlab = "interval index")
+```
+
+
+```{r}
+r_locs = round(runif(num_locs, min_loc, max_loc))
+```
+
+## Classifying Regions According to Counts
+```{r}
+tmp_i_size <- c(200, 500, 1000, 2050)
+r_locs <- round(runif(locs.len, 0, DNA.len))
+tmp.counts <- integer()
+
+for (i_size in tmp_i_size) {
+  tmp.counts <- integer()
+  tmp <- split(locs, cut(locs, seq(min(locs), max(locs), by=i_size), 
+                               include.lowest=TRUE, drop=FALSE))
+  
+  tmp.len <- length(tmp)
+  tmp.counts <- integer(14)
+  
+  i = 1
+  for (p in tmp) {
+    if(length(p) >= 14 ){
+      tmp.counts[14] = tmp.counts[14] + 1
+    } else {
+      tmp.counts[length(p)] = tmp.counts[length(p)] + 1
+    }
+    i = i + 1
+  }
+  
+  title = paste('Observed Palindrome Counts Across', tmp.len, 'Intervals of Length', i_size)
+  bp <- barplot(tmp.counts, col=rgb(0,0,1, 0.6), main=title, ylim=c(0,max(tmp.counts) + 10), xaxt='n', xlab="Palindrome Counts", ylab="Freq")
+  
+  labels <- (1:14)
+  labels[14] <- "14+"
+  text(x=bp[,1], y=-1, adj=c(1, 1), labels, cex=0.8, srt=45, xpd=TRUE)
+}
+```
+
+
+## 2 Spacing Between Palindromes
+### 2.1 Compute and Generate Spacings
+```{r}
+# Calculate observed spacings
+pair_spacings <- diff(locs)
+trip_spacings <- numeric(length(pair_spacings) - 1)
+for(i in 1:(length(pair_spacings) - 1)) {
+  trip_spacings[i] <- pair_spacings[i] + pair_spacings[i+1]
+}
+
+# Compute lambda estimate
+exp_lambda.est <- 1 / mean(pair_spacings)
+
+# Generate spacings
+r_pair_spacings <- rexp(length(pair_spacings), exp_lambda.est)
+r_trip_spacings <- rgamma(length(trip_spacings), 2, exp_lambda.est)
+```
+
+### 2.2 Plot Spacings Between Palindromes
+```{r}
+# Histogram of Observed Spacings
+hist(pair_spacings, breaks = 30, xaxt='n',
+     main="Histogram of Observed Spacings Between Pairs and Triplets", 
+     col=rgb(0,0,1,0.7), xlab ="Number of Basepairs Apart")
+hist(trip_spacings, col=rgb(1,0,0,0.7),  xaxt='n', add=T)
+axis(1, seq(0, max(trip_spacings), 200))
+legend("topright", c("Pairs", "Triplets"), col=c(rgb(0,0,1,0.7), rgb(1,0,0,0.7)), lwd=8)
+
+# Histogram of Generated Spacings
+hist(r_pair_spacings, breaks = 30, xaxt='n', 
+     main="Histogram of Generated Spacings Between Pairs and Triplets", 
+     col=rgb(0,0,1,0.7), xlab ="Number of Basepairs Apart", xaxt='n')
+hist(r_trip_spacings, col=rgb(1,0,0,0.7), add=T)
+axis(1, seq(0, max(r_pair_spacings), 200))
+legend("topright", c("Pairs", "Triplets"), col=c(rgb(0,0,1,0.7), rgb(1,0,0,0.7)), lwd=8)
+
+# Histogram Comparison of Observed and Generated Pair Spacings
+hist(pair_spacings, breaks = 30, xaxt='n',
+     main="Comparison of Observed and Generated Pair Spacings", 
+     col=rgb(0,0,1,0.7), xlab ="Number of Basepairs Apart")
+hist(r_pair_spacings, breaks = 30, xaxt='n', 
+     col=rgb(1,0,0,0.7), add=T)
+axis(1, seq(0, max(c(pair_spacings, r_pair_spacings)), 200))
+legend("topright", c("Observed", "Generated"), col=c(rgb(0,0,1,0.7), rgb(1,0,0,0.7)), lwd=8)
+
+# Histogram Comparison of Observed and Generated Triplet Spacings
+hist(trip_spacings, main="Comparison of Observed and Generated Triplet Spacings", 
+     col=rgb(0,0,1,0.7), xlab ="Number of Basepairs Apart", yaxt='n',  xaxt='n', ylim=c(0, 75))
+hist(r_trip_spacings, xaxt='n', col=rgb(1,0,0,0.7), xlab ="Number of Basepairs Apart", yaxt='n', add=T )
+axis(1, seq(0, max(c(trip_spacings, r_trip_spacings)) + 200, 200))
+axis(2, seq(0, 70, 10))
+
+legend("topright", c("Observed", "Generated"), col=c(rgb(0,0,1,0.7), rgb(1,0,0,0.7)), lwd=8)
+```
+
+
+### 2.3 Create Contigency Table for Spacings
+```{r}
+sizes <- 75
+len <- 750
+num_len_above <- sum((pair_spacings > len))
+
+a <- split(pair_spacings, cut(pair_spacings, seq(0, len, by=sizes), include.lowest=TRUE, drop=FALSE))
+a.count <- c(unlist(map(a, length), use.names=FALSE), num_len_above)
+
+exp_spaces <- numeric(length(a.count))
+
+j = 1
+for(i in seq(0, len, by=sizes)) {
+  if (i != len) {
+    exp_spaces[j] <- pexp(i + sizes, exp_lambda.est, lower=T) - pexp(i, exp_lambda.est, lower=T)
+  } else {
+    exp_spaces[j] <- pexp(len, exp_lambda.est, lower=F)
+  }
+  j = j + 1
+}
+exp_spaces = exp_spaces*length(pair_spacings)
+```
+
+```{r}
+space_cont_table <- data.frame("Bucket"=seq(0, len, by=sizes), 
+                               "Obs counts"=a.count, 
+                               "Exp Counts"=exp_spaces)
+space_cont_table
+chi_sqrd(a.count, exp_spaces, 2)
+```
+```{r}
+Residuals <- (a.count - exp_spaces) / sqrt(exp_spaces)
+plot(Residuals, type = 'h', main="Residuals for Spaces Between Palindrome Pairs", ylab = "standardized residuals", xlab = "interval index")
+```
+
+```{r}
+stripplot(pair_spacings)
+```
+
+### 2.4 Create Contigency Table for Triplet Spacings
+```{r}
+sizes <- 150
+len <- 1500
+num_len_above <- sum((trip_spacings > len))
+
+b <- split(trip_spacings, cut(trip_spacings, seq(0, len, by=sizes), include.lowest=TRUE, drop=FALSE))
+b.count <- c(unlist(map(b, length), use.names=FALSE), num_len_above)
+
+exp_trip_spaces <- numeric(length(b.count))
+j = 1
+for(i in seq(0, len, by=sizes)) {
+  if (i != len) {
+    exp_trip_spaces[j] <- pgamma(i + sizes, 2, exp_lambda.est, lower=T) - pgamma(i,2, exp_lambda.est, lower=T)
+  } else {
+    exp_trip_spaces[j] <- pgamma(len, 2, exp_lambda.est, lower=F)
+  }
+  j = j + 1
+}
+
+exp_trip_spaces = exp_trip_spaces * length(trip_spacings)
+```
+
+```{r}
+space_cont_table <- data.frame("Bucket"=seq(0, len, by=sizes), 
+                               "Obs counts"=b.count, 
+                               "Exp Counts"=exp_trip_spaces)
+space_cont_table
+print(chi_sqrd(b.count, (exp_trip_spaces), 2))
+```
+
+```{r}
+Residuals <- (a.count - exp_spaces) / sqrt(exp_spaces)
+plot(Residuals, type = 'h', main="Residuals for Spaces Between Palindrome Triplets", ylab = "standardized residuals", xlab = "interval index")
+```
+
+
+
+## 3 Locations and Uniform Distribution
+### 3.1 Compute Observed and Generated Count of Palindromes Across Buckets
+```{r}
+num_buckets <- 8
+r_locs <- round(runif(locs.len, 0, DNA.len))
+
+split_locs <- split(locs, cut(locs, seq(0, DNA.len, by=(DNA.len/num_buckets)), include.lowest=TRUE, drop=FALSE))
+split_locs.count <- unlist(map(split_locs, length), use.names=FALSE)
+
+r_split_locs <- split(r_locs, cut(r_locs, seq(0, DNA.len, by=(DNA.len/num_buckets)), include.lowest=TRUE, drop=FALSE))
+r_split_locs.count <- unlist(map(r_split_locs, length), use.names=FALSE)
+
+barplot(split_locs.count,  main=paste("Palindrome Counts Across",num_buckets, "Intervals"), col=rgb(0,0,1,0.7))
+barplot(r_split_locs.count, col=rgb(1,0,0,0.7), add=T)
+legend("topleft", c("Observed", "Generated"), col=c(rgb(0,0,1,0.7), rgb(1,0,0,0.7)), lwd=2)
+```
+
+### 3.2 Contigency Table of Palindrome Locations
+```{r}
+exp_counts <- replicate(num_buckets, locs.len/num_buckets)
+obs_counts <- split_locs.count
+
+contigency_table <- data.frame("Bucket #"=1:num_buckets, "Obs counts"=obs_counts, "Exp Counts"=exp_counts)
+contigency_table
+```
+
+### 3.3 P-Value of Chi-Squared Test for Palindrome Location Counts
+```{r}
+print(chi_sqrd(obs_counts, exp_counts, 2))
+```
+
+### 3.4 Residuals of Palindrome Location Counts
+```{r}
+Residuals <- (obs_counts - exp_counts) / sqrt(exp_counts)
+plot(Residuals, type = 'h', main="Residuals for Palindrome Location Counts", ylab = "standardized residuals", xlab = "interval index")
+```
+

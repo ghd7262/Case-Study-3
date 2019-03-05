@@ -1,0 +1,58 @@
+---
+title: "Case Study Code"
+author: "Dukki Yiwen Karl Nick John"
+date: "3/3/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+## Random Scatter
+# 1-dimensional scatter plot of palindrome locations
+# Overlapping histogram of palindrome locations
+```{r}
+## Question 1: Random Scatter
+
+
+set.seed(296)
+data = read.csv("data.txt", header=T)
+site.original = data.matrix(data)
+n.base <- 229354 #number of DNA sequence bases
+n.site <- 296 #296 palindrome sites
+Title1 = 'Palindrome locations'
+library(lattice)
+
+#Create a scatter plot of the locations of the original data
+site.original.plot =stripplot(site.original, pch=5, cex=0.8,col="black", 
+           main=Title1, xlab= 'Base Pairs', jitter.data=T, grid="h") 
+site.original.plot
+
+#randomly generate 3 different 296 panlindrome locations from 229354 DNA sequence bases
+site.random1 = round(runif(n.site,0,n.base))
+site.random2 = round(runif(n.site,0,n.base))
+site.random3 = round(runif(n.site,0,n.base))
+
+#plot 3 scatter plots of runif
+stripplot(site.random1, pch=5, cex=0.8, jitter.data=T, grid = "h", col="blue", #3 different scatter plots
+          main = Title1, xlab = 'Base Pairs') #1-dimensional scatter plot
+     
+stripplot(site.random2, pch=5, cex=0.8, jitter.data=T, grid = "h", col="red", 
+          main = Title1, xlab = 'Base Pairs')
+     
+stripplot(site.random3, pch=5, cex=0.8, jitter.data=T, grid = "h", col="green", 
+          main = Title1, xlab = 'Base Pairs', add=T)
+
+
+#plot histograms comparing sample 1 and sample 2
+hist(site.random1, breaks=85, col=rgb(1,1,0,0.7), main="Histogram of sample 1 and sample 2", xlab="Base Pair",xaxt='n')
+hist(site.random2, breaks=85, col=rgb(0,1,1,0.4), main="Histogram of sample 2", xlab="Base Pair", add=T, xaxt='n')
+axis(1, at=seq(0, n.base+10000, 10000))
+legend("topright", c("sample1", "sample2"), col=c(rgb(1,1,0,0.7), rgb(0,1,1,0.4)), lwd=8)
+
+#plot histograms comparing original data and sample3
+hist(site.random3, breaks=85, col=rgb(1,0,0,0.5), main="Histogram of original data and sample 3", xlab="BasePair", xaxt='n')
+hist(site.original, breaks=85, col=rgb(0,0,1,0.5), main="Histogram of original data", xlab="Base Pair", add=T, xaxt='n')
+axis(1, at=seq(0, n.base+10000, 10000))
+legend("topright", c("sample3", "data"), col=c(rgb(1,0,0,0.5), rgb(0,0,1,0.5)), lwd=8)
+
+```
